@@ -1,0 +1,5 @@
+Create nuget package. Standing in repo root.
+./.nuget/NuGet.Exe pack ./src/Squirrel.nuspec
+
+Publish nuget package. Standing in folder with nupkg file:
+./.nuget/NuGet.Exe push -Source "Cash" -ApiKey Api-Key-Here .\nukpkg-file-here
