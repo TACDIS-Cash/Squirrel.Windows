@@ -187,19 +187,13 @@ namespace Squirrel
             //    launching a different version than we started with (this is why
             //    we take the app's *name* rather than a full path)
 
-            if (exeToStart == null)
-            {
-                var exeFileFullPath = Process.GetCurrentProcess().MainModule.FileName;
-                // Get everything after the last backslash.
-                var fileNameRegex = new Regex(@"^.*\\(?<FileName>[^\\]+\.exe)$");
-                exeToStart = fileNameRegex.Match(exeFileFullPath).Groups["FileName"].Value;
-            }
+            exeToStart = exeToStart ?? Path.GetFileName(Assembly.GetEntryAssembly().Location);
             var argsArg = arguments != null ?
                 String.Format("-a \"{0}\"", arguments) : "";
 
             exiting = true;
 
-            Process.Start(getUpdateExe(), String.Format("--processStartAndWait \"{0}\" {1}", exeToStart, argsArg));
+            Process.Start(getUpdateExe(), String.Format("--processStartAndWait {0} {1}", exeToStart, argsArg));
 
             // NB: We have to give update.exe some time to grab our PID, but
             // we can't use WaitForInputIdle because we probably don't have
