@@ -10,7 +10,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Threading;
-using Splat;
+using Squirrel.SimpleSplat;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
@@ -104,8 +104,15 @@ namespace Squirrel
 
         public static WebClient CreateWebClient()
         {
-            // WHY DOESNT IT JUST DO THISSSSSSSS
-            System.Net.ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+            // enable TLS support
+            // TLS 1.0 and 1.1 are enabled for backward compatibility and should be disabled in the future
+            // for security reasons
+            ServicePointManager.SecurityProtocol |=
+                SecurityProtocolType.Tls12 |
+                SecurityProtocolType.Tls11 |
+                SecurityProtocolType.Tls;
+            // disable SSLv3 support for security reasons
+            ServicePointManager.SecurityProtocol &= ~SecurityProtocolType.Ssl3;
 
             var ret = new WebClient();
             var wp = WebRequest.DefaultWebProxy;
@@ -358,7 +365,7 @@ namespace Squirrel
             if (ModeDetector.InUnitTestRunner()) {
                 var vendorDir = Path.Combine(
                     Path.GetDirectoryName(Assembly.GetExecutingAssembly().CodeBase.Replace("file:///", "")),
-                    "..", "..", "..",
+                    "..", "..", "..", "..",
                     "vendor", "7zip"
                 );
                 return FindHelperExecutable("7z.exe", new[] { vendorDir });
@@ -673,7 +680,7 @@ namespace Squirrel
         static IFullLogger Log()
         {
             return logger ??
-                (logger = Locator.CurrentMutable.GetService<ILogManager>().GetLogger(typeof(Utility)));
+                (logger = SquirrelLocator.CurrentMutable.GetService<ILogManager>().GetLogger(typeof(Utility)));
         }
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -776,7 +783,7 @@ namespace Squirrel
         public static List<Tuple<string, int>> EnumerateProcesses()
         {
             int bytesReturned = 0;
-            var pids = new int[2048];
+            var pids = new int[16384];
 
             fixed(int* p = pids) {
                 if (!NativeMethods.EnumProcesses((IntPtr)p, sizeof(int) * pids.Length, out bytesReturned)) {

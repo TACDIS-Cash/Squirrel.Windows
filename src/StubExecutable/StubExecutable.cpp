@@ -8,6 +8,11 @@
 
 using namespace std;
 
+bool FileExists(const std::wstring& filePath) {
+    DWORD fileAttributes = GetFileAttributes(filePath.c_str());
+    return (fileAttributes != INVALID_FILE_ATTRIBUTES) && !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 wchar_t* FindRootAppDir() 
 {
 	wchar_t* ourDirectory = new wchar_t[MAX_PATH];
@@ -67,6 +72,13 @@ std::wstring FindLatestAppDir()
 
 		version::Semver200_version thisVer(s);
 
+		// Skip the directory which contains a .not-finished file
+		std::wstring appFolder = fileInfo.cFileName;
+		std::wstring dirPath = ourDir.substr(0, ourDir.size() - 5) + appFolder;
+		if (FileExists(dirPath + L"\\.not-finished")) {
+			continue;
+		}
+
 		if (thisVer > acc) {
 			acc = thisVer;
 			acc_s = appVer;
@@ -108,8 +120,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	cmdLine += L"\" ";
 	cmdLine += lpCmdLine;
 
-	wchar_t* lpCommandLine = wcsdup(cmdLine.c_str());
-	wchar_t* lpCurrentDirectory = wcsdup(workingDir.c_str());
+	wchar_t* lpCommandLine = _wcsdup(cmdLine.c_str());
+	wchar_t* lpCurrentDirectory = _wcsdup(workingDir.c_str());
 	if (!CreateProcess(NULL, lpCommandLine, NULL, NULL, true, 0, NULL, lpCurrentDirectory, &si, &pi)) {
 		return -1;
 	}

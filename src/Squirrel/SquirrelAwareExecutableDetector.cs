@@ -36,25 +36,26 @@ namespace Squirrel
         static int? GetAssemblySquirrelAwareVersion(string executable)
         {
             try {
-                var assembly = AssemblyDefinition.ReadAssembly(executable);
-                if (!assembly.HasCustomAttributes) return null;
+                using (var assembly = AssemblyDefinition.ReadAssembly(executable)) {
+                    if (!assembly.HasCustomAttributes) return null;
 
-                var attrs = assembly.CustomAttributes;
-                var attribute = attrs.FirstOrDefault(x => {
-                    if (x.AttributeType.FullName != typeof(AssemblyMetadataAttribute).FullName) return false;
-                    if (x.ConstructorArguments.Count != 2) return false;
-                    return x.ConstructorArguments[0].Value.ToString() == "SquirrelAwareVersion";
-                });
+                    var attrs = assembly.CustomAttributes;
+                    var attribute = attrs.FirstOrDefault(x => {
+                        if (x.AttributeType.FullName != typeof(AssemblyMetadataAttribute).FullName) return false;
+                        if (x.ConstructorArguments.Count != 2) return false;
+                        return x.ConstructorArguments[0].Value.ToString() == "SquirrelAwareVersion";
+                    });
 
-                if (attribute == null) return null;
+                    if (attribute == null) return null;
 
-                int result;
-                if (!Int32.TryParse(attribute.ConstructorArguments[1].Value.ToString(), NumberStyles.Integer, CultureInfo.CurrentCulture, out result)) {
-                    return null;
+                    int result;
+                    if (!Int32.TryParse(attribute.ConstructorArguments[1].Value.ToString(), NumberStyles.Integer, CultureInfo.CurrentCulture, out result)) {
+                        return null;
+                    }
+
+                    return result;
                 }
-
-                return result;
-            } 
+            }
             catch (FileLoadException) { return null; }
             catch (BadImageFormatException) { return null; }
         }
@@ -69,8 +70,21 @@ namespace Squirrel
             var buf = new byte[size];
             if (!NativeMethods.GetFileVersionInfo(executable, 0, size, buf)) return null;
 
-            IntPtr result; int resultSize;
-            if (!NativeMethods.VerQueryValue(buf, "\\StringFileInfo\\040904B0\\SquirrelAwareVersion", out result, out resultSize)) {
+            const string englishUS = "040904B0";
+            const string neutral = "000004B0";
+            var supportedLanguageCodes = new[] {englishUS, neutral};
+
+            IntPtr result;
+            int resultSize;
+            if (!supportedLanguageCodes.Any(
+                languageCode =>
+                    NativeMethods.VerQueryValue(
+                        buf,
+                        $"\\StringFileInfo\\{languageCode}\\SquirrelAwareVersion",
+                        out result, out resultSize
+                    )
+            ))
+            {
                 return null;
             }
 

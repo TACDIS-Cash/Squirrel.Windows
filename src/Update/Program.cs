@@ -1,5 +1,5 @@
 ﻿using NuGet;
-using Splat;
+using Squirrel.SimpleSplat;
 using Squirrel.Json;
 using System;
 using System.Collections.Generic;
@@ -44,7 +44,7 @@ namespace Squirrel.Update
                 opt = new StartupOption(args);
             } catch (Exception ex) {
                 using (var logger = new SetupLogLogger(true, "OptionParsing") { Level = LogLevel.Info }) {
-                    Locator.CurrentMutable.Register(() => logger, typeof(Splat.ILogger));
+                    SquirrelLocator.CurrentMutable.Register(() => logger, typeof(Squirrel.SimpleSplat.ILogger));
                     logger.Write($"Failed to parse command line options. {ex.Message}", LogLevel.Error);
                 }
                 throw;
@@ -55,7 +55,7 @@ namespace Squirrel.Update
             bool isUninstalling = opt.updateAction == UpdateAction.Uninstall;
 
             using (var logger = new SetupLogLogger(isUninstalling, opt.updateAction.ToString()) {Level = LogLevel.Info}) {
-                Locator.CurrentMutable.Register(() => logger, typeof (Splat.ILogger));
+                SquirrelLocator.CurrentMutable.Register(() => logger, typeof (SimpleSplat.ILogger));
 
                 try {
                     return executeCommandLine(args);
@@ -122,7 +122,7 @@ namespace Squirrel.Update
                     UpdateSelf().Wait();
                     break;
                 case UpdateAction.Shortcut:
-                    Shortcut(opt.target, opt.shortcutArgs, opt.processStartArgs, opt.setupIcon);
+                    Shortcut(opt.target, opt.shortcutArgs, opt.processStartArgs, opt.setupIcon, opt.onlyUpdateShortcuts);
                     break;
                 case UpdateAction.Deshortcut:
                     Deshortcut(opt.target, opt.shortcutArgs);
@@ -199,9 +199,14 @@ namespace Squirrel.Update
 
             retry:
                 try {
-                    var updateInfo = await mgr.CheckForUpdate(intention: UpdaterIntention.Update, ignoreDeltaUpdates: ignoreDeltaUpdates, progress: x => Console.WriteLine(x / 3));
-                    await mgr.DownloadReleases(updateInfo.ReleasesToApply, x => Console.WriteLine(33 + x / 3));
-                    await mgr.ApplyReleases(updateInfo, x => Console.WriteLine(66 + x / 3));
+                    // 3 % (3 stages)
+                    var updateInfo = await mgr.CheckForUpdate(intention: UpdaterIntention.Update, ignoreDeltaUpdates: ignoreDeltaUpdates, progress: x => Console.WriteLine(UpdateManager.CalculateProgress(x, 0, 3)));
+
+                    // 3 - 30 %
+                    await mgr.DownloadReleases(updateInfo.ReleasesToApply, x => Console.WriteLine(UpdateManager.CalculateProgress(x, 3, 30)));
+
+                    // 30 - 100 %
+                    await mgr.ApplyReleases(updateInfo, x => Console.WriteLine(UpdateManager.CalculateProgress(x, 30, 100)));
                 } catch (Exception ex) {
                     if (ignoreDeltaUpdates) {
                         this.Log().ErrorException("Really couldn't apply updates!", ex);
@@ -422,7 +427,7 @@ namespace Squirrel.Update
             }
         }
 
-        public void Shortcut(string exeName, string shortcutArgs, string processStartArgs, string icon)
+        public void Shortcut(string exeName, string shortcutArgs, string processStartArgs, string icon, bool onlyUpdate)
         {
             if (String.IsNullOrWhiteSpace(exeName)) {
                 ShowHelp();
@@ -434,7 +439,7 @@ namespace Squirrel.Update
             var locations = parseShortcutLocations(shortcutArgs);
 
             using (var mgr = new UpdateManager("", appName)) {
-                mgr.CreateShortcutsForExecutable(exeName, locations ?? defaultLocations, false, processStartArgs, icon);
+                mgr.CreateShortcutsForExecutable(exeName, locations ?? defaultLocations, onlyUpdate, processStartArgs, icon);
             }
         }
 
@@ -596,7 +601,13 @@ namespace Squirrel.Update
                 String.Format("sign {0} \"{1}\"", signingOpts, exePath), CancellationToken.None);
 
             if (processResult.Item1 != 0) {
-                var optsWithPasswordHidden = new Regex(@"/p\s+\w+").Replace(signingOpts, "/p ********");
+                var optsWithPasswordHidden = new Regex(@"(?x)                    #ignore pattern white space so we can leave comments
+                    (?i)                #ignore case
+                    (?<=/p\s+)          #positive look behind for /p that is followed by white space(s)
+                    .*?                 #get everything lazy way 
+                    (?=\s+)             #positive look ahead for white space(s) 
+                "
+                ).Replace(signingOpts, "/p ********");
                 var msg = String.Format("Failed to sign, command invoked was: '{0} sign {1} {2}'",
                     exe, optsWithPasswordHidden, exePath);
 
@@ -744,8 +755,8 @@ namespace Squirrel.Update
             }
 
             // Debug Mode (i.e. in vendor)
-            var debugPath = Path.Combine(ourPath, "..", "..", "..", "vendor", "wix", "candle.exe");
-            if (File.Exists(debugPath)) {
+            var debugPath = Path.Combine(ourPath, "..", "..", "..", "vendor", "wix");
+            if (File.Exists(Path.Combine(debugPath, "candle.exe"))) {
                 return Path.GetFullPath(debugPath);
             }
 
@@ -805,11 +816,11 @@ namespace Squirrel.Update
         }
     }
 
-    class SetupLogLogger : Splat.ILogger, IDisposable
+    class SetupLogLogger : SimpleSplat.ILogger, IDisposable
     {
         TextWriter inner;
         readonly object gate = 42;
-        public Splat.LogLevel Level { get; set; }
+        public SimpleSplat.LogLevel Level { get; set; }
 
         public SetupLogLogger(bool saveInTemp, string commandSuffix = null)
         {
